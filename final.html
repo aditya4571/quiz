@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ADITYA Quiz Offline </title>
+
+<!-- IMPORTANT:
+     Place `mammoth.browser.min.js` in the same folder as this HTML file
+     so DOCX import works fully offline. Get it here:
+     https://github.com/mwilliamson/mammoth.js/releases
+-->
+<script src="mammoth.browser.min.js"></script>
+
+<style>
+  /*  ---------- Design tokens ---------- */
+  :root{
+    --ir-blue: #0b6efd;
+    --muted: #6b7280;
+    --card: #ffffff;
+    --bg: #f4f6fb;
+    --success: #28a745;
+    --danger: #dc3545;
+    --visited: #f6c84c;
+    --unatt: #cbd5e1;
+    --radius: 12px;
+    --glass: rgba(255,255,255,0.6);
+    --text: #0f172a;
+    --stat-bg: rgba(255,255,255,0.95);
+  }
+
+  /* Neutral, high-contrast dark theme */
+  [data-theme="dark"]{
+    --bg: #0f1720;
+    --card: #0b1220;
+    --ir-blue: #2f8bff;
+    --muted: #9aa6bb;
+    --unatt: #203040;
+    --glass: rgba(255,255,255,0.03);
+    --text: #e6eef8;
+    --stat-bg: rgba(10,13,18,0.85);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    background: linear-gradient(180deg,var(--bg), #eaf2ff);
+    color: var(--text);
+    -webkit-font-smoothing:antialiased;
+    padding:18px;
+  }
+
+  header { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+  .title { display:flex; flex-direction:column; }
+  h1 { margin:0; font-size:20px; }
+  .subtitle { color:var(--muted); font-size:13px; margin-top:6px; }
+
+  .controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  input[type="file"]{ padding:8px 10px; border-radius:9px; background:var(--card); border:1px solid rgba(15,23,42,0.06); color:var(--text); }
+  .btn { border:none; padding:10px 12px; border-radius:10px; font-weight:700; cursor:pointer; }
+  .btn.primary { background: linear-gradient(180deg,var(--ir-blue), #0066dd); color:#fff; box-shadow: 0 6px 18px rgba(11,110,253,0.12); }
+  .btn.ghost { background: transparent; border:1px solid rgba(15,23,42,0.06); color:var(--text); padding:8px 10px; }
+  .btn.warn { background: linear-gradient(180deg,#f6c84c,#e6b800); color:#111; }
+
+  .layout { display:grid; grid-template-columns: 1fr 360px; gap:18px; align-items:start; }
+  @media (max-width:980px){ .layout{ grid-template-columns: 1fr; } }
+
+  .card { background: var(--card); border-radius: var(--radius); padding:18px; box-shadow: 0 8px 26px rgba(2,6,23,0.06); }
+  .qmeta { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .qnum { color:var(--muted); font-size:13px; }
+  .question { font-size:18px; font-weight:700; line-height:1.35; margin-bottom:12px; }
+  .options { display:flex; flex-direction:column; gap:10px; }
+  .opt { display:flex; align-items:center; gap:12px; padding:12px; border-radius:10px; background: linear-gradient(180deg,#f7f9ff,#fff); border:1px solid rgba(11,110,253,0.03); cursor:pointer; transition: all .12s ease; color:var(--text); }
+  .opt:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(11,110,253,0.04); }
+  .opt input { transform:scale(1.05); }
+  .opt.correct { background: rgba(40,164,79,0.08); border-color: rgba(40,164,79,0.14); }
+  .opt.wrong { background: rgba(220,53,69,0.06); border-color: rgba(220,53,69,0.12); }
+  .opt.dimmed { opacity:0.7; cursor:default; }
+
+  .feedback { margin-top:10px; font-weight:700; min-height:20px; }
+
+  .nav-row { display:flex; justify-content:space-between; align-items:center; margin-top:14px; gap:12px; }
+  .small { font-size:13px; color:var(--muted); }
+
+  .side { display:flex; flex-direction:column; gap:12px; position:sticky; top:18px; }
+
+  .stat { background: var(--stat-bg); padding:12px; border-radius:10px; display:flex; justify-content:space-between; align-items:center; box-shadow: 0 8px 18px rgba(2,6,23,0.04); }
+  .stat .label { color:var(--muted); font-size:13px; }
+  .stat .value { font-weight:700; font-size:16px; }
+
+  .progressWrap { background:#e9f2ff; height:12px; border-radius:999px; overflow:hidden; margin-top:8px; }
+  .progressBar { height:100%; width:0%; background:linear-gradient(90deg,var(--ir-blue), #0066dd); transition: width .25s ease; }
+
+  .gridCard { background:var(--card); padding:12px; border-radius:10px; box-shadow: 0 8px 18px rgba(2,6,23,0.04); }
+  .qn-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap:8px; }
+  .qn-btn { height:44px; border-radius:8px; border:none; font-weight:700; cursor:pointer; }
+  .qn-btn.unattempted { background:var(--unatt); color:var(--text); }
+  .qn-btn.visited { background:var(--visited); color:#111; }
+  .qn-btn.correct { background:var(--success); color:#fff; }
+  .qn-btn.wrong { background:var(--danger); color:#fff; }
+  .qn-btn.current { outline:3px solid rgba(11,110,253,0.12); }
+
+  /* Dark mode visual improvements (neutral, high contrast) */
+  [data-theme="dark"] .card { box-shadow: 0 6px 18px rgba(0,0,0,0.6); }
+  [data-theme="dark"] .opt { background: linear-gradient(180deg,#071a2b,#07223b); border:1px solid rgba(255,255,255,0.03); color:var(--text); }
+  [data-theme="dark"] .opt:hover { box-shadow:0 10px 26px rgba(0,0,0,0.6); }
+  [data-theme="dark"] .opt.correct { background: linear-gradient(180deg, rgba(46,164,79,0.12), rgba(46,164,79,0.06)); border-color: rgba(46,164,79,0.18); }
+  [data-theme="dark"] .opt.wrong { background: linear-gradient(180deg, rgba(220,53,69,0.12), rgba(220,53,69,0.06)); border-color: rgba(220,53,69,0.12); }
+  [data-theme="dark"] .stat { box-shadow: 0 6px 14px rgba(0,0,0,0.5); }
+
+  .footer { margin-top:16px; color:var(--muted); font-size:13px; }
+
+  @media (max-width:640px){
+    .qn-grid { grid-template-columns: repeat(auto-fill, minmax(36px,1fr)); }
+    .qn-btn { height:36px; font-size:13px; }
+  }
+</style>
+</head>
+<body data-theme="light">
+
+<header>
+  <div class="title">
+    <h1>ADITYA Quiz </h1>
+    <div class="subtitle">Upload a .docx file with numbered MCQs.  <code>**</code> </div>
+  </div>
+
+  <div class="controls">
+    <input id="fileInput" type="file" accept=".docx" />
+    <button class="btn primary" id="loadBtn">Load / Start</button>
+    <button class="btn ghost" id="restartBtn" title="Clear saved session">Restart Quiz</button>
+    <button class="btn ghost" id="themeBtn" title="Toggle dark mode">Dark</button>
+    <label class="small" style="display:flex;align-items:center;gap:6px;margin-left:6px">
+      Timed:
+      <input id="timedCheckbox" type="checkbox" style="margin-left:6px" />
+    </label>
+    <input id="timedMinutes" type="number" min="1" placeholder="minutes" style="width:90px;padding:8px;border-radius:8px;border:1px solid rgba(15,23,42,0.06);" />
+    <button class="btn warn" id="startTimedBtn">Start Timed</button>
+    <button class="btn ghost" id="reviewBtn">Review</button>
+    <button class="btn ghost" id="pauseTimerBtn" title="Pause/Resume timer">Pause Timer</button>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- LEFT: Question Card -->
+  <section class="card" aria-live="polite">
+    <div class="qmeta">
+      <div class="qnum" id="qNum">No quiz loaded</div>
+      <div class="small">Autosave enabled — progress persists in this browser</div>
+    </div>
+
+    <div class="question" id="questionText">Upload a .docx and click Load / Start to begin.</div>
+
+    <div class="options" id="optionsList" role="list"></div>
+
+    <div class="feedback" id="feedbackText"></div>
+
+    <div class="nav-row">
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn ghost" id="prevBtn" disabled>Previous</button>
+        <button class="btn primary" id="submitBtn" disabled>Submit</button>
+        <button class="btn ghost" id="nextBtn" disabled>Next</button>
+        <button class="btn ghost" id="finishBtn" title="Finish and open Review">Finish</button>
+      </div>
+
+      <div style="min-width:200px;text-align:right">
+        <div class="small">Progress</div>
+        <div class="progressWrap" aria-hidden="true">
+          <div id="progressBar" class="progressBar"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT: Stats and Grid -->
+  <aside class="side">
+    <div class="stat">
+      <div class="label">Total Questions</div>
+      <div class="value" id="statTotal">0</div>
+    </div>
+
+    <div class="stat">
+      <div class="label">Completed</div>
+      <div class="value" id="statCompleted">0</div>
+    </div>
+
+    <div class="stat">
+      <div class="label">Correct</div>
+      <div class="value" id="statCorrect">0</div>
+    </div>
+
+    <div class="stat">
+      <div class="label">Percentage</div>
+      <div class="value" id="statPerc">0%</div>
+    </div>
+
+    <div class="stat">
+      <div class="label">Timer</div>
+      <div class="value" id="statTime">00:00:00</div>
+    </div>
+
+    <div class="gridCard card">
+      <div class="small" style="margin-bottom:8px">Question Navigator</div>
+      <div id="qnGrid" class="qn-grid" aria-label="question navigator"></div>
+      <div class="small" style="margin-top:8px;color:var(--muted)">
+        Colors: <span style="display:inline-block;width:12px;height:12px;background:var(--unatt);margin:0 6px;vertical-align:middle;border-radius:3px"></span>Unattempted
+        <span style="display:inline-block;width:12px;height:12px;background:var(--visited);margin:0 6px;vertical-align:middle;border-radius:3px"></span>Visited
+        <span style="display:inline-block;width:12px;height:12px;background:var(--success);margin:0 6px;vertical-align:middle;border-radius:3px"></span>Correct
+        <span style="display:inline-block;width:12px;height:12px;background:var(--danger);margin:0 6px;vertical-align:middle;border-radius:3px"></span>Wrong
+      </div>
+    </div>
+  </aside>
+</main>
+
+<div class="footer">Tip: Progress and timer saved locally. Use <strong>Restart Quiz</strong> to clear saved progress.</div>
+
+<script>
+/* --------------- Keys and DOM --------------- */
+const LS_Q = 'aditya_quiz_q_vfinal';
+const LS_STATE = 'aditya_quiz_state_vfinal';
+const LS_RAW = 'aditya_quiz_raw_vfinal';
+const LS_THEME = 'aditya_quiz_theme_vfinal';
+
+const fileInput = document.getElementById('fileInput');
+const loadBtn = document.getElementById('loadBtn');
+const restartBtn = document.getElementById('restartBtn');
+const themeBtn = document.getElementById('themeBtn');
+const reviewBtn = document.getElementById('reviewBtn');
+const pauseTimerBtn = document.getElementById('pauseTimerBtn');
+const timedCheckbox = document.getElementById('timedCheckbox');
+const timedMinutes = document.getElementById('timedMinutes');
+const startTimedBtn = document.getElementById('startTimedBtn');
+
+const qNum = document.getElementById('qNum');
+const questionText = document.getElementById('questionText');
+const optionsList = document.getElementById('optionsList');
+const feedbackText = document.getElementById('feedbackText');
+
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const submitBtn = document.getElementById('submitBtn');
+const finishBtn = document.getElementById('finishBtn');
+
+const statTotal = document.getElementById('statTotal');
+const statCompleted = document.getElementById('statCompleted');
+const statCorrect = document.getElementById('statCorrect');
+const statPerc = document.getElementById('statPerc');
+const statTimeEl = document.getElementById('statTime');
+const progressBar = document.getElementById('progressBar');
+const qnGrid = document.getElementById('qnGrid');
+
+/* --------------- State --------------- */
+let questions = []; // { q, options:[{text, correct}], answered:null|idx, visited:false }
+let currentIndex = 0;
+let completedCount = 0;
+let correctCount = 0;
+let selectedIdx = null;
+let loadedRaw = null;
+
+/* Timer */
+let elapsedMs = 0;         // ms elapsed (for non-timed mode)
+let timerRunning = false;
+let timerInterval = null;
+let timedModeEnabled = false;
+let timerEndAt = null;     // timestamp when timed mode ends (ms)
+
+// init theme
+(function initTheme(){
+  const t = localStorage.getItem(LS_THEME) || 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  themeBtn.textContent = t === 'dark' ? 'Light' : 'Dark';
+})();
+
+/* -------------- Helpers: time -------------- */
+function formatMs(ms){
+  const totalSec = Math.max(0, Math.floor(ms/1000));
+  const h = Math.floor(totalSec/3600).toString().padStart(2,'0');
+  const m = Math.floor((totalSec%3600)/60).toString().padStart(2,'0');
+  const s = (totalSec%60).toString().padStart(2,'0');
+  return `${h}:${m}:${s}`;
+}
+
+/* -------------- Persistence -------------- */
+function saveAll(){
+  try{
+    localStorage.setItem(LS_Q, JSON.stringify(questions));
+    localStorage.setItem(LS_STATE, JSON.stringify({
+      currentIndex, completedCount, correctCount, elapsedMs, timerRunning, timedModeEnabled, timerEndAt
+    }));
+    if (loadedRaw) localStorage.setItem(LS_RAW, loadedRaw);
+  }catch(e){ console.warn('saveAll failed', e); }
+}
+
+function loadAll(){
+  try{
+    const qs = localStorage.getItem(LS_Q);
+    const st = localStorage.getItem(LS_STATE);
+    const raw = localStorage.getItem(LS_RAW);
+    if (qs && st){
+      questions = JSON.parse(qs);
+      const s = JSON.parse(st);
+      currentIndex = s.currentIndex || 0;
+      completedCount = s.completedCount || 0;
+      correctCount = s.correctCount || 0;
+      elapsedMs = s.elapsedMs || 0;
+      timerRunning = s.timerRunning || false;
+      timedModeEnabled = s.timedModeEnabled || false;
+      timerEndAt = s.timerEndAt || null;
+      loadedRaw = raw || null;
+      if (timerRunning){
+        startTimerInterval();
+      }
+      return true;
+    }
+  }catch(e){ console.warn('loadAll failed', e); }
+  return false;
+}
+
+function clearAll(){
+  localStorage.removeItem(LS_Q);
+  localStorage.removeItem(LS_STATE);
+  localStorage.removeItem(LS_RAW);
+}
+
+/* -------------- Timer Controls -------------- */
+function startTimerInterval(){
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    if (timedModeEnabled && timerEndAt){
+      const remaining = timerEndAt - Date.now();
+      if (remaining <= 0){
+        // time up
+        stopTimer();
+        handleTimeout();
+        return;
+      }
+      statTimeEl.textContent = formatMs(remaining);
+    } else {
+      // incremental timer
+      elapsedMs += 1000;
+      statTimeEl.textContent = formatMs(elapsedMs);
+    }
+  }, 1000);
+  timerInterval; // assigned
+}
+
+function startTimer(){
+  if (timerInterval) clearInterval(timerInterval);
+  timerRunning = true;
+  // show immediate value
+  if (timedModeEnabled && timerEndAt) {
+    statTimeEl.textContent = formatMs(timerEndAt - Date.now());
+  } else {
+    statTimeEl.textContent = formatMs(elapsedMs);
+  }
+  startTimerInterval();
+  saveAll();
+}
+
+function pauseTimer(){
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = null;
+  timerRunning = false;
+  saveAll();
+}
+
+function resumeTimer(){
+  if (!timerRunning){
+    timerRunning = true;
+    startTimerInterval();
+    saveAll();
+  }
+}
+
+function stopTimer(){
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = null;
+  timerRunning = false;
+  saveAll();
+}
+
+function handleTimeout(){
+  // mark all remaining as visited (but not answered)
+  for (let i=0;i<questions.length;i++){
+    if (questions[i].answered === null) questions[i].visited = true;
+  }
+  saveAll();
+  alert('Time is up. Opening Review mode.');
+  openReviewMode();
+  renderQuestion();
+}
+
+/* Pause/Resume UI */
+pauseTimerBtn.addEventListener('click', () => {
+  if (timerRunning) {
+    pauseTimer();
+    pauseTimerBtn.textContent = 'Resume Timer';
+  } else {
+    resumeTimer();
+    pauseTimerBtn.textContent = 'Pause Timer';
+  }
+});
+
+/* -------------- Parse .docx text -> questions -------------- */
+function parseQuestionsFromText(text){
+  const blocks = text.split(/\n(?=\s*\d+\.\s+)/g);
+  const parsed = [];
+  for (const block of blocks){
+    const lines = block.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    if (!lines.length) continue;
+    const qline = lines[0].replace(/^\s*\d+\.\s*/, '').trim();
+    if (!qline) continue;
+    const opts = [];
+    for (let i=1;i<lines.length;i++){
+      let ln = lines[i];
+      const isCorrect = ln.includes('**');
+      ln = ln.replace(/\*\*/g,'').trim();
+      const m = ln.match(/^([A-Da-d])\s*[\)\.\:\-]\s*(.*)$/);
+      if (m) opts.push({ text:m[2].trim(), correct:!!isCorrect });
+      else opts.push({ text:ln.trim(), correct:!!isCorrect });
+    }
+    if (opts.length >= 2) parsed.push({ q: qline, options: opts, answered: null, visited: false });
+  }
+  return parsed;
+}
+
+/* -------------- UI Rendering -------------- */
+function updateStatsUI(){
+  statTotal.textContent = questions.length;
+  statCompleted.textContent = completedCount;
+  statCorrect.textContent = correctCount;
+  const perc = completedCount>0 ? ((correctCount/completedCount)*100).toFixed(1) : '0.0';
+  statPerc.textContent = perc + '%';
+  const prog = questions.length>0 ? Math.round((completedCount/questions.length)*100) : 0;
+  progressBar.style.width = prog + '%';
+}
+
+function buildNavigator(){
+  qnGrid.innerHTML = '';
+  questions.forEach((q,i)=>{
+    const b = document.createElement('button');
+    b.className = 'qn-btn';
+    b.textContent = (i+1);
+    b.title = `Go to question ${i+1}`;
+    b.addEventListener('click', ()=>{ gotoQuestion(i); });
+    b.classList.add('unattempted');
+    if (q.visited) { b.classList.remove('unattempted'); b.classList.add('visited'); }
+    if (q.answered !== null){
+      b.classList.remove('visited'); b.classList.remove('unattempted');
+      const correct = q.options[q.answered] && q.options[q.answered].correct;
+      if (correct) b.classList.add('correct'); else b.classList.add('wrong');
+    }
+    if (i === currentIndex) b.classList.add('current');
+    qnGrid.appendChild(b);
+  });
+}
+
+function renderQuestion(){
+  if (!questions.length){
+    qNum.textContent = 'No quiz loaded';
+    questionText.textContent = 'Upload a .docx and click Load / Start to begin.';
+    optionsList.innerHTML = '';
+    feedbackText.textContent = '';
+    prevBtn.disabled = true; nextBtn.disabled = true; submitBtn.disabled = true;
+    updateStatsUI(); buildNavigator(); return;
+  }
+
+  if (currentIndex < 0) currentIndex = 0;
+  if (currentIndex >= questions.length) currentIndex = questions.length-1;
+
+  const q = questions[currentIndex];
+  q.visited = true;
+  qNum.textContent = `Question ${currentIndex+1} of ${questions.length}`;
+  questionText.textContent = q.q;
+
+  optionsList.innerHTML = '';
+  feedbackText.textContent = '';
+  selectedIdx = null;
+
+  const already = q.answered !== null;
+  q.options.forEach((opt, idx) => {
+    const div = document.createElement('div');
+    div.className = 'opt';
+    div.setAttribute('data-idx', idx);
+    div.tabIndex = 0;
+
+    const radio = document.createElement('input');
+    radio.type = 'radio'; radio.name = 'option'; radio.value = idx;
+    const label = document.createElement('div'); label.textContent = `${String.fromCharCode(65+idx)}) ${opt.text}`;
+
+    div.appendChild(radio);
+    div.appendChild(label);
+
+    div.addEventListener('click', ()=>{ if (!already) selectOption(idx); });
+    div.addEventListener('keydown', (e)=>{ if ((e.key==='Enter'||e.key===' ') && !already){ e.preventDefault(); selectOption(idx); } });
+
+    if (already){
+      const chosen = q.answered;
+      if (opt.correct) div.classList.add('correct');
+      if (chosen === idx && !opt.correct) div.classList.add('wrong');
+      div.classList.add('dimmed');
+      radio.checked = chosen === idx;
+      radio.disabled = true;
+    }
+
+    optionsList.appendChild(div);
+  });
+
+  prevBtn.disabled = currentIndex === 0;
+  nextBtn.disabled = currentIndex === questions.length - 1;
+  submitBtn.disabled = already;
+  finishBtn.disabled = false;
+
+  updateStatsUI();
+  buildNavigator();
+  saveAll();
+}
+
+/* -------------- Interaction -------------- */
+function selectOption(idx){
+  selectedIdx = idx;
+  const inputs = optionsList.querySelectorAll('input[name="option"]');
+  inputs.forEach(inp => inp.checked = Number(inp.value) === idx);
+  submitBtn.disabled = false;
+
+  // If timer not running, start it (user engaged)
+  if (!timerRunning){
+    startTimer();
+  }
+}
+
+function submitAnswer(){
+  if (selectedIdx === null){
+    alert('Please select an option first.');
+    return;
+  }
+  const q = questions[currentIndex];
+  if (q.answered !== null) return;
+  q.answered = selectedIdx;
+  const correct = !!q.options[selectedIdx].correct;
+  if (correct) correctCount++;
+  completedCount++;
+
+  const divs = optionsList.querySelectorAll('.opt');
+  divs.forEach((d,i)=>{
+    if (q.options[i].correct) d.classList.add('correct');
+    if (i === selectedIdx && !q.options[i].correct) d.classList.add('wrong');
+    d.classList.add('dimmed');
+    const r = d.querySelector('input[type="radio"]');
+    if (r) r.disabled = true;
+  });
+
+  feedbackText.textContent = correct ? '✔ Correct' : '✖ Incorrect — correct option highlighted';
+  submitBtn.disabled = true;
+  updateStatsUI();
+  buildNavigator();
+  saveAll();
+}
+
+function gotoQuestion(i){
+  currentIndex = i;
+  selectedIdx = null;
+  renderQuestion();
+}
+function nextQuestion(){ if (currentIndex < questions.length - 1){ currentIndex++; renderQuestion(); } }
+function prevQuestion(){ if (currentIndex > 0){ currentIndex--; renderQuestion(); } }
+
+/* -------------- Review Mode -------------- */
+function openReviewMode(){
+  const overlay = document.createElement('div');
+  overlay.style.position='fixed'; overlay.style.left=0; overlay.style.top=0; overlay.style.right=0; overlay.style.bottom=0;
+  overlay.style.background='rgba(0,0,0,0.6)'; overlay.style.zIndex=9999; overlay.style.overflow='auto';
+  const box = document.createElement('div');
+  box.style.maxWidth='980px'; box.style.margin='24px auto'; box.style.background='var(--card)'; box.style.borderRadius='12px';
+  box.style.padding='18px'; box.style.boxShadow='0 10px 40px rgba(0,0,0,0.4)';
+  overlay.appendChild(box);
+
+  const title = document.createElement('h2'); title.textContent = 'Review — All Questions'; title.style.marginTop=0;
+  box.appendChild(title);
+
+  questions.forEach((q, idx) => {
+    const qbox = document.createElement('div'); qbox.style.marginBottom='12px'; qbox.style.padding='10px'; qbox.style.borderBottom='1px solid rgba(0,0,0,0.06)';
+    const qh = document.createElement('div'); qh.style.fontWeight='700'; qh.textContent = `${idx+1}. ${q.q}`;
+    qbox.appendChild(qh);
+    q.options.forEach((opt, i) => {
+      const row = document.createElement('div'); row.style.display='flex'; row.style.gap='8px'; row.style.alignItems='center'; row.style.padding='6px 0';
+      const label = document.createElement('div'); label.textContent = `${String.fromCharCode(65+i)}) ${opt.text}`;
+      const tag = document.createElement('div'); tag.style.marginLeft='auto'; tag.style.fontSize='13px';
+      if (opt.correct) { tag.textContent = 'Correct'; tag.style.color = 'var(--success)'; tag.style.fontWeight='700'; }
+      if (q.answered === i && !opt.correct) { tag.textContent = 'Your Answer'; tag.style.color='var(--danger)'; tag.style.fontWeight='700'; }
+      if (q.answered === i && opt.correct) { tag.textContent = 'Your Answer'; tag.style.color='var(--success)'; tag.style.fontWeight='700'; }
+      row.appendChild(label); row.appendChild(tag);
+      qbox.appendChild(row);
+    });
+    box.appendChild(qbox);
+  });
+
+  const closeBtn = document.createElement('button'); closeBtn.textContent='Close Review'; closeBtn.className='btn primary';
+  closeBtn.style.marginTop='8px';
+  closeBtn.addEventListener('click', ()=>{ document.body.removeChild(overlay); });
+  box.appendChild(closeBtn);
+  document.body.appendChild(overlay);
+}
+
+/* -------------- Timeout auto-finish -------------- */
+function autoFinishOnTimeout(){
+  stopTimer();
+  for (let i=0;i<questions.length;i++){
+    if (questions[i].answered === null) questions[i].visited = true;
+  }
+  saveAll();
+  alert('Time finished. Entering review.');
+  openReviewMode();
+  renderQuestion();
+}
+
+/* -------------- File Loading (Mammoth required) -------------- */
+function loadDocx(file){
+  if (typeof mammoth === 'undefined'){
+    alert('mammoth.browser.min.js not found. Place it next to this HTML file to enable DOCX import (see top of HTML).');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const arrayBuffer = ev.target.result;
+    mammoth.extractRawText({ arrayBuffer })
+      .then(result => {
+        const raw = (result && result.value) ? result.value.trim() : '';
+        if (!raw){ alert('No text extracted from file. Ensure the .docx is valid.'); return; }
+        const savedRaw = localStorage.getItem(LS_RAW);
+        if (savedRaw && savedRaw === raw){
+          if (confirm('Saved session for this file found. Resume? Cancel to start new.')){
+            const ok = loadAll();
+            if (ok){ renderQuestion(); return; }
+          } else {
+            clearAll();
+          }
+        }
+        const parsed = parseQuestionsFromText(raw);
+        if (!parsed.length){ alert('No valid questions found. Use numbered questions and A)/B)/... options.'); return; }
+        questions = parsed; currentIndex = 0; completedCount = 0; correctCount = 0; selectedIdx = null; loadedRaw = raw;
+        elapsedMs = 0; timedModeEnabled = false; timerEndAt = null; stopTimer();
+        saveAll(); renderQuestion();
+      })
+      .catch(err => { console.error(err); alert('Error parsing .docx'); });
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* -------------- Event wiring -------------- */
+loadBtn.addEventListener('click', ()=>{
+  const f = fileInput.files[0];
+  if (f) loadDocx(f);
+  else {
+    const ok = loadAll();
+    if (ok){ renderQuestion(); } else alert('Select a .docx to load or open a saved session by clicking Load with no file if you previously saved.');
+  }
+});
+
+restartBtn.addEventListener('click', ()=>{
+  if (!confirm('Restart and clear saved progress?')) return;
+  clearAll(); questions=[]; currentIndex=0; completedCount=0; correctCount=0; selectedIdx=null; loadedRaw=null;
+  elapsedMs = 0; stopTimer(); timedModeEnabled=false; timerEndAt=null;
+  renderQuestion(); updateStatsUI();
+});
+
+themeBtn.addEventListener('click', ()=>{
+  const cur = document.documentElement.getAttribute('data-theme') || 'light';
+  const next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  themeBtn.textContent = next === 'dark' ? 'Light' : 'Dark';
+  localStorage.setItem(LS_THEME, next);
+});
+
+prevBtn.addEventListener('click', ()=>{ prevQuestion(); });
+nextBtn.addEventListener('click', ()=>{ nextQuestion(); });
+submitBtn.addEventListener('click', ()=>{ submitAnswer(); });
+finishBtn.addEventListener('click', ()=>{ openReviewMode(); });
+reviewBtn.addEventListener('click', ()=>{ openReviewMode(); });
+
+document.addEventListener('keydown', (e)=>{
+  if (e.key === 'ArrowLeft') prevQuestion();
+  if (e.key === 'ArrowRight') nextQuestion();
+  if (e.key === 'Enter' && !submitBtn.disabled) submitAnswer();
+});
+
+/* Timed start button */
+startTimedBtn.addEventListener('click', ()=>{
+  const mins = Number(timedMinutes.value);
+  if (!Number.isFinite(mins) || mins <= 0) { alert('Enter time in minutes (>=1).'); return; }
+  // If no questions loaded, require file first
+  if (!questions.length){
+    const f = fileInput.files[0];
+    if (!f){ alert('Select a .docx file first or load saved session.'); return; }
+    loadDocx(f);
+    // wait — user must click Start Timed again after load
+    setTimeout(()=> { alert('File loaded. Click Start Timed again to start timed session.'); }, 700);
+    return;
+  }
+  timedModeEnabled = true;
+  timerEndAt = Date.now() + mins * 60 * 1000;
+  elapsedMs = 0;
+  timerRunning = true;
+  startTimer();
+  saveAll();
+  alert(`Timed mode started for ${mins} minutes.`);
+});
+
+/* Prev/Next helpers */
+function prevQuestion(){ if (currentIndex>0){ currentIndex--; selectedIdx=null; renderQuestion(); } }
+function nextQuestion(){ if (currentIndex<questions.length-1){ currentIndex++; selectedIdx=null; renderQuestion(); } }
+
+/* Submit */
+function submitAnswer(){
+  if (selectedIdx === null){ alert('Select an option first.'); return; }
+  const q = questions[currentIndex];
+  if (q.answered !== null) return;
+  q.answered = selectedIdx;
+  const correct = !!q.options[selectedIdx].correct;
+  if (correct) correctCount++;
+  completedCount++;
+  // visuals
+  const divs = optionsList.querySelectorAll('.opt');
+  divs.forEach((d,i)=> {
+    if (q.options[i].correct) d.classList.add('correct');
+    if (i===selectedIdx && !q.options[i].correct) d.classList.add('wrong');
+    d.classList.add('dimmed');
+    const r = d.querySelector('input[type="radio"]');
+    if (r) r.disabled = true;
+  });
+  feedbackText.textContent = correct ? '✔ Correct' : '✖ Incorrect — correct option highlighted';
+  submitBtn.disabled = true;
+  updateStatsUI(); buildNavigator(); saveAll();
+}
+
+/* -------------- Auto resume on page load -------------- */
+window.addEventListener('load', ()=>{
+  const resumed = loadAll();
+  if (resumed){
+    renderQuestion();
+    updateStatsUI();
+  } else {
+    updateStatsUI();
+  }
+});
+
+/* -------------- Before unload save -------------- */
+window.addEventListener('beforeunload', ()=>{
+  saveAll();
+});
+
+/* -------------- Helper render initial state -------------- */
+function updateStatsUI(){ statTotal.textContent = questions.length; statCompleted.textContent = completedCount; statCorrect.textContent = correctCount; statPerc.textContent = (completedCount>0?((correctCount/completedCount)*100).toFixed(1):'0.0') + '%'; const prog = questions.length>0?Math.round((completedCount/questions.length)*100):0; progressBar.style.width = prog + '%'; if (!timerRunning){ statTimeEl.textContent = timedModeEnabled && timerEndAt ? formatMs(timerEndAt - Date.now()) : formatMs(elapsedMs); } }
+
+/* -------------- Utilities keep UI in sync -------------- */
+function saveAll(){ try{ localStorage.setItem(LS_Q, JSON.stringify(questions)); localStorage.setItem(LS_STATE, JSON.stringify({ currentIndex, completedCount, correctCount, elapsedMs, timerRunning, timedModeEnabled, timerEndAt })); if (loadedRaw) localStorage.setItem(LS_RAW, loadedRaw); }catch(e){ console.warn(e);} updateStatsUI(); }
+
+/* small wrapper to ensure timer interval runs if timerRunning was set when state loaded */
+function startTimer(){
+  if (timerInterval) clearInterval(timerInterval);
+  timerRunning = true;
+  if (timedModeEnabled && timerEndAt){
+    statTimeEl.textContent = formatMs(timerEndAt - Date.now());
+  } else {
+    statTimeEl.textContent = formatMs(elapsedMs);
+  }
+  timerInterval = setInterval(()=>{
+    if (timedModeEnabled && timerEndAt){
+      const remaining = timerEndAt - Date.now();
+      if (remaining <= 0){ clearInterval(timerInterval); timerInterval=null; timerRunning=false; autoFinishOnTimeout(); return; }
+      statTimeEl.textContent = formatMs(remaining);
+    } else {
+      elapsedMs += 1000;
+      statTimeEl.textContent = formatMs(elapsedMs);
+    }
+  }, 1000);
+  saveAll();
+}
+
+function autoFinishOnTimeout(){
+  stopTimer();
+  for (let i=0;i<questions.length;i++){ if (questions[i].answered === null) questions[i].visited = true; }
+  saveAll();
+  alert('Time is up — entering Review mode.');
+  openReviewMode();
+  renderQuestion();
+}
+
+function stopTimer(){ if (timerInterval) clearInterval(timerInterval); timerInterval=null; timerRunning=false; saveAll(); }
+
+/* done */
+</script>
+
+</body>
+</html>
