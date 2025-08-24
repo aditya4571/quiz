@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ADITYA Quiz</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; background:#f7f9fc; }
+  h1 { color:#1a237e; text-align:center; }
+  .container { max-width:800px; margin:auto; background:#fff; padding:20px; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+  label,input,button { font-size:16px; }
+  button { background:#3949ab; color:white; border:none; border-radius:6px; padding:8px 16px; margin:8px 6px 8px 0; cursor:pointer; }
+  button:hover { background:#283593; }
+  .output { white-space:pre-wrap; border:1px solid #ddd; padding:12px; margin-top:15px; border-radius:6px; background:#fafafa; min-height:200px; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<!-- ✅ Correct docx.js build -->
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+</head>
+<body>
+<div class="container">
+  <h1>ADITYA Quiz</h1>
+
+  <p><b>Step 1:</b> Upload one or more Word (.docx) files containing MCQs:</p>
+  <input type="file" id="fileInput" multiple accept=".docx"><br><br>
+
+  <p><b>Step 2:</b> Choose number of questions:</p>
+  <input type="number" id="numQuestions" value="80" min="1"><br><br>
+
+  <button onclick="generateSet()">Generate Quiz Set</button>
+  <button onclick="copyToClipboard()">Copy to Clipboard</button>
+  <button onclick="saveAsDocx()">Save as DOCX</button>
+
+  <h3>Generated Quiz</h3>
+  <div id="output" class="output"></div>
+</div>
+
+<script>
+let allQuestions = [];
+let fileQuestions = [];
+let lastGenerated = "";
+
+// Parse uploaded files
+document.getElementById('fileInput').addEventListener('change', async function(event){
+  allQuestions = [];
+  fileQuestions = [];
+  const files = event.target.files;
+  for(let f of files){
+    let arrayBuffer = await f.arrayBuffer();
+    let result = await mammoth.extractRawText({arrayBuffer});
+    let qlist = parseQuestionsFromText(result.value);
+    allQuestions = allQuestions.concat(qlist);
+    fileQuestions.push(qlist);
+  }
+});
+
+// Parser
+function parseQuestionsFromText(text){
+  let lines=text.split(/\r?\n/).map(l=>l.trim()).filter(l=>l.length>0);
+  let questions=[],currentQ=null;
+  const qRegex=/^(\d+[\.\)]|Q\d+[:\.\-]?|Question\s*\d+[:\.\-]?|[\.\)])\s*/i;
+  const optRegex=/^(\*?\*?[A-Da-d][\)\.]\s)/;
+
+  for(let line of lines){
+    let clean=line.trim();
+    if(!clean) continue;
+    if(qRegex.test(clean)){
+      if(currentQ) questions.push(currentQ);
+      currentQ={text:clean.replace(qRegex,"").replace(/\*\*/g,"").trim(),options:[]};
+    }
+    else if(currentQ && optRegex.test(clean)){
+      let optText=clean;
+      if(/\*\*/.test(optText)){
+        optText=optText.replace(/\*\*/g,"").trim();
+        optText="**"+optText+"**";
+      }
+      currentQ.options.push({text:optText});
+    }
+    else if(currentQ){
+      currentQ.text+=" "+clean.replace(/\*\*/g,"");
+    }
+  }
+  if(currentQ) questions.push(currentQ);
+  return questions;
+}
+
+// Generate quiz
+function generateSet(){
+  let S=parseInt(document.getElementById('numQuestions').value)||10;
+  if(allQuestions.length<S){
+    alert("Not enough questions! Only "+allQuestions.length+" available.");
+    return;
+  }
+  let chosen=[];
+  fileQuestions.forEach(fileQ=>{
+    if(fileQ.length>0){
+      let q=fileQ[Math.floor(Math.random()*fileQ.length)];
+      chosen.push(q);
+    }
+  });
+  let remaining=allQuestions.filter(q=>!chosen.includes(q));
+  remaining.sort(()=>Math.random()-0.5);
+  while(chosen.length<S && remaining.length>0){
+    chosen.push(remaining.pop());
+  }
+
+  let out="";
+  chosen.forEach((q,i)=>{
+    out+=(i+1)+". "+q.text+"\n";
+    q.options.forEach(o=> out+=o.text+"\n");
+    out+="\n";
+  });
+  document.getElementById('output').textContent=out;
+  lastGenerated=out;
+}
+
+// Copy
+function copyToClipboard(){
+  let text=document.getElementById('output').textContent;
+  if(!text.trim()){ alert("No quiz generated yet!"); return; }
+  navigator.clipboard.writeText(text).then(()=>alert("Quiz copied to clipboard!"));
+}
+
+// Save as DOCX
+async function saveAsDocx(){
+  if(!lastGenerated.trim()){ alert("No quiz generated yet!"); return; }
+  const { Document, Packer, Paragraph, TextRun } = window.docx;
+  const paras=[];
+  lastGenerated.split("\n").forEach(line=>{
+    paras.push(new Paragraph({ children:[ new TextRun(line) ] }));
+  });
+  const doc=new Document({sections:[{children:paras}]});
+  const blob=await Packer.toBlob(doc);
+  const link=document.createElement("a");
+  link.href=URL.createObjectURL(blob);
+  link.download="Quiz_Set.docx";
+  link.click();
+}
+</script>
+</body>
+</html>
