@@ -244,9 +244,9 @@
     }
 
     .btn-upload:hover { background: var(--primary-hover); }
-    .btn-pdf { background: #dc2626; width: auto; }
     .btn-print { background: #475569; width: auto; }
     .btn-jumble { background: #0ea5e9; width: auto; }
+    .btn-reveal { background: #f59e0b; width: auto; }
     .btn-clear { background: #94a3b8; margin-top: 10px; color: #000; width: 100%; }
 
     /* Stats Bar (Responsive) */
@@ -349,14 +349,21 @@
       margin-bottom: 6px;
       color: var(--text-main);
       transition: all 0.2s;
+      position: relative;
     }
 
     .option-label:hover:not(.disabled) { background: var(--bg); border-color: var(--primary); }
 
-    .option-label input { margin-right: 12px; width: 16px; height: 16px; }
+    .option-label input { margin-right: 12px; width: 16px; height: 16px; flex-shrink: 0; }
 
     .option-label.correct-choice { background-color: #dcfce7 !important; border-color: var(--success) !important; color: #166534 !important; font-weight: 600; }
     .option-label.incorrect-choice { background-color: #fee2e2 !important; border-color: var(--error) !important; color: #991b1b !important; font-weight: 600; }
+
+    .feedback-icon {
+      margin-left: auto;
+      font-weight: 800;
+      font-size: 1rem;
+    }
 
     /* Progress UI */
     .progress-container { width: 100%; background: var(--border); border-radius: 99px; height: 6px; margin: 10px 0; overflow: hidden; }
@@ -385,18 +392,66 @@
     @media print {
       body { background: white !important; padding: 0 !important; color: #000 !important; }
       .upload-card, .stats-bar, header, .btn-clear, #floatingTimer { display: none !important; }
-      .page-container { page-break-after: always; padding: 10mm; height: 296mm; width: 210mm; position: relative; overflow: hidden; }
-      .page-watermark { display: block !important; color: rgba(0, 0, 0, 0.15) !important; }
-      .quiz-grid { display: grid !important; grid-template-columns: 1fr 1fr !important; grid-template-rows: repeat(5, 1fr) !important; height: 270mm !important; }
-      .question-card { border: 0.5pt solid #000 !important; padding: 10px !important; height: 100% !important; z-index: 5; background: white !important; box-shadow: none !important;}
+      
+      .page-container { 
+        page-break-after: always; 
+        padding: 8mm !important; 
+        height: 296mm; 
+        width: 210mm; 
+        position: relative; 
+        overflow: hidden; 
+      }
+      
+      .page-watermark { display: block !important; color: rgba(0, 0, 0, 0.12) !important; }
+      
+      .quiz-grid { 
+        display: grid !important; 
+        grid-template-columns: 1fr 1fr !important; 
+        grid-template-rows: repeat(5, 1fr) !important; 
+        height: 278mm !important; 
+        gap: 5mm !important;
+      }
+      
+      .question-card { 
+        border: 0.5pt solid #000 !important; 
+        padding: 6px !important; 
+        height: 100% !important; 
+        z-index: 5; 
+        background: white !important; 
+        box-shadow: none !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        overflow: hidden !important;
+      }
+
+      h3 { 
+        font-size: 9pt !important; 
+        margin-bottom: 4px !important; 
+        color: #000 !important; 
+        line-height: 1.2 !important;
+      }
+      
+      .option-label { 
+        border: 0.5pt solid #888 !important; 
+        padding: 2px 5px !important; 
+        font-size: 8pt !important; 
+        margin-bottom: 2px !important; 
+        color: #000 !important;
+        border-radius: 3px !important;
+      }
+
       * { color: #000 !important; border-color: #000 !important; }
     }
 
+    /* PDF Specific State to Mirror Print */
     .pdf-render-state { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact;}
-    .pdf-render-state .page-container { page-break-after: always; height: 296mm; width: 210mm; padding: 10mm; background: white !important; }
-    .pdf-render-state .page-watermark { display: block !important; color: rgba(0, 0, 0, 0.15) !important; }
-    .pdf-render-state .quiz-grid { display: grid !important; grid-template-columns: 1fr 1fr !important; grid-template-rows: repeat(5, 1fr) !important; height: 270mm !important; }
-    .pdf-render-state .question-card { border: 1px solid #000 !important; background: white !important; }
+    .pdf-render-state .page-container { page-break-after: always; height: 296mm; width: 210mm; padding: 8mm; }
+    .pdf-render-state .page-watermark { display: block !important; color: rgba(0, 0, 0, 0.1) !important; }
+    .pdf-render-state .quiz-grid { display: grid !important; grid-template-columns: 1fr 1fr !important; grid-template-rows: repeat(5, 1fr) !important; height: 278mm !important; gap: 5mm !important; }
+    .pdf-render-state .question-card { border: 1px solid #000 !important; background: white !important; padding: 6px !important; }
+    .pdf-render-state h3 { font-size: 9pt !important; margin-bottom: 4px !important; line-height: 1.2 !important; }
+    .pdf-render-state .option-label { font-size: 8pt !important; padding: 2px 5px !important; border: 1px solid #000 !important; margin-bottom: 2px !important; }
     .pdf-render-state * { color: #000 !important; }
   </style>
 </head>
@@ -476,8 +531,8 @@
     <div id="statsBar" class="stats-bar">
       <div class="stat-item" style="color: var(--primary);">Score: <span id="currentScore">0</span> / <span id="totalQuestionsCount">0</span></div>
       <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button id="revealAllBtn" class="btn-action btn-reveal">Reveal All</button>
         <button id="jumbleNowBtn" class="btn-action btn-jumble">Shuffle Quiz</button>
-        <button id="downloadPdfBtn" class="btn-action btn-pdf">Save PDF</button>
         <button onclick="window.print()" class="btn-action btn-print">Print</button>
       </div>
     </div>
@@ -673,7 +728,7 @@
             const label = document.createElement('label');
             label.className = 'option-label';
             label.id = `label-${j}-${idx}`;
-            label.innerHTML = `<input type="radio" name="q${j}" value="${idx}"> ${String.fromCharCode(65 + idx)}) ${opt}`;
+            label.innerHTML = `<input type="radio" name="q${j}" value="${idx}"> <span>${String.fromCharCode(65 + idx)}) ${opt}</span> <span class="feedback-icon" id="feedback-icon-${j}-${idx}"></span>`;
             label.querySelector('input').onclick = () => handleSelection(j, idx);
             list.appendChild(label);
           });
@@ -701,12 +756,44 @@
           const input = l.querySelector('input'); input.disabled = true;
           if (parseInt(input.value) === selIdx) input.checked = true;
         });
-        const selLabel = document.getElementById(`label-${qIdx}-${selIdx}`), corrLabel = document.getElementById(`label-${qIdx}-${qObj.answer}`);
-        if (selIdx === qObj.answer) { score++; if (selLabel) selLabel.classList.add('correct-choice'); }
-        else { if (selLabel) selLabel.classList.add('incorrect-choice'); if (corrLabel) corrLabel.classList.add('correct-choice'); }
+
+        // Clear existing feedback icons
+        card.querySelectorAll('.feedback-icon').forEach(icon => icon.textContent = '');
+
+        const selLabel = document.getElementById(`label-${qIdx}-${selIdx}`);
+        const corrLabel = document.getElementById(`label-${qIdx}-${qObj.answer}`);
+        const selIcon = document.getElementById(`feedback-icon-${qIdx}-${selIdx}`);
+        const corrIcon = document.getElementById(`feedback-icon-${qIdx}-${qObj.answer}`);
+
+        if (selIdx === qObj.answer) {
+          score++;
+          if (selLabel) selLabel.classList.add('correct-choice');
+          if (selIcon) selIcon.textContent = '✔';
+        } else if (selIdx !== -1) {
+          if (selLabel) selLabel.classList.add('incorrect-choice');
+          if (selIcon) selIcon.textContent = '✖';
+          if (corrLabel) corrLabel.classList.add('correct-choice');
+          if (corrIcon) corrIcon.textContent = '✔';
+        } else {
+          // Revealed but not selected
+          if (corrLabel) corrLabel.classList.add('correct-choice');
+          if (corrIcon) corrIcon.textContent = '✔';
+        }
       });
       document.getElementById('currentScore').textContent = score;
     }
+
+    document.getElementById('revealAllBtn').onclick = () => {
+      if(confirm("Reveal all correct answers? This will mark all questions as answered.")) {
+        questions.forEach((q, idx) => {
+          if (!userAnswers.hasOwnProperty(idx)) {
+            userAnswers[idx] = -1; // Mark as revealed but no selection
+          }
+        });
+        saveToBrowser();
+        applyStoredAnswers();
+      }
+    };
 
     window.onload = loadFromBrowser;
     document.getElementById('tab-ai').onclick = () => switchTab('ai');
@@ -761,23 +848,6 @@
       showLoading("Processing...", 50);
       await processRawText(text, document.getElementById('jumbleQuestions').checked, document.getElementById('jumbleOptions').checked);
       hideLoading();
-    };
-
-    document.getElementById('downloadPdfBtn').onclick = () => {
-      const element = document.getElementById('main-content');
-      document.body.classList.add('pdf-render-state');
-      document.getElementById('upload-section').style.display = 'none';
-      document.getElementById('statsBar').style.display = 'none';
-      document.getElementById('floatingTimer').style.display = 'none';
-      const opt = { margin: 0, filename: 'Aditya_Quiz.pdf', image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'] } };
-      setTimeout(() => {
-        html2pdf().set(opt).from(element).save().then(() => {
-          document.body.classList.remove('pdf-render-state');
-          document.getElementById('upload-section').style.display = 'block';
-          document.getElementById('statsBar').style.display = 'flex';
-          if (Object.keys(userAnswers).length > 0) document.getElementById('floatingTimer').style.display = 'flex';
-        });
-      }, 500);
     };
   </script>
 </body>
