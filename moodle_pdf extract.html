@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCQ Extractor</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PDF.js for PDF processing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        .loader {
+            border-top-color: #3498db;
+            -webkit-animation: spinner 1.5s linear infinite;
+            animation: spinner 1.5s linear infinite;
+        }
+        @-webkit-keyframes spinner {
+            0% { -webkit-transform: rotate(0deg); }
+            100% { -webkit-transform: rotate(360deg); }
+        }
+        @keyframes spinner {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .drag-over {
+            border-color: #2563eb !important;
+            background-color: #f0f7ff !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen p-4 md:p-8 font-sans">
+    <div class="max-w-4xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+        <div class="bg-blue-600 p-6 text-white text-center">
+            <h1 class="text-2xl font-bold">MCQ Extractor</h1>
+            <p class="text-blue-100 text-sm mt-1">Extract questions from PDF or Moodle HTML Review</p>
+        </div>
+
+        <div class="p-8 space-y-6">
+            <div class="space-y-4">
+                <div class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:bg-slate-50 transition cursor-pointer" id="dropZone">
+                    <input type="file" id="fileInput" accept=".pdf,.html" class="hidden">
+                    <div class="flex flex-col items-center pointer-events-none">
+                        <svg class="w-12 h-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                        </svg>
+                        <p class="text-gray-600 font-medium" id="fileNameDisplay">Click to upload or drag and drop</p>
+                        <p class="text-gray-400 text-xs mt-1">Supports PDF and HTML (Quiz Reviews)</p>
+                    </div>
+                </div>
+            </div>
+
+            <button id="extractBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                <span id="btnText">Extract Questions</span>
+                <div id="loader" class="loader hidden ease-linear rounded-full border-2 border-t-2 border-gray-200 h-5 w-5"></div>
+            </button>
+
+            <div id="statusMessage" class="hidden p-4 rounded-lg text-sm font-medium text-center"></div>
+
+            <!-- Results Area -->
+            <div id="resultsContainer" class="hidden space-y-4">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-lg font-bold text-gray-800">Extracted Content</h2>
+                    <button id="copyBtn" class="bg-gray-800 hover:bg-black text-white px-4 py-2 rounded-lg text-sm transition flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                        Copy to Clipboard
+                    </button>
+                </div>
+                <textarea id="outputArea" readonly class="w-full h-96 p-4 bg-gray-50 border border-gray-200 rounded-lg font-mono text-sm outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+            </div>
+
+            <div class="mt-8 border-t pt-6">
+                <h2 class="text-lg font-bold text-gray-800 mb-3">Logs</h2>
+                <div id="log" class="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-xs h-32 overflow-y-auto">
+                    > System ready. Upload a file to begin.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // PDF.js worker setup
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+
+        const fileInput = document.getElementById('fileInput');
+        const extractBtn = document.getElementById('extractBtn');
+        const statusMessage = document.getElementById('statusMessage');
+        const logContainer = document.getElementById('log');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+        const loader = document.getElementById('loader');
+        const btnText = document.getElementById('btnText');
+        const dropZone = document.getElementById('dropZone');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const outputArea = document.getElementById('outputArea');
+        const copyBtn = document.getElementById('copyBtn');
+
+        let selectedFile = null;
+
+        function addLog(msg) {
+            const time = new Date().toLocaleTimeString();
+            logContainer.innerHTML += `<div>[${time}] ${msg}</div>`;
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function showStatus(msg, type = 'info') {
+            statusMessage.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-blue-100', 'text-blue-700');
+            if (type === 'error') statusMessage.classList.add('bg-red-100', 'text-red-700');
+            else if (type === 'success') statusMessage.classList.add('bg-green-100', 'text-green-700');
+            else statusMessage.classList.add('bg-blue-100', 'text-blue-700');
+            statusMessage.innerText = msg;
+            statusMessage.classList.remove('hidden');
+        }
+
+        function handleFileSelection(file) {
+            if (!file) return;
+            selectedFile = file;
+            fileNameDisplay.innerText = selectedFile.name;
+            fileNameDisplay.classList.add('text-blue-600', 'font-bold');
+            addLog(`File ready: ${selectedFile.name}`);
+            showStatus(`Ready to extract from "${selectedFile.name}"`, "info");
+            resultsContainer.classList.add('hidden');
+        }
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleFileSelection(e.target.files[0]);
+        });
+
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault(); e.stopPropagation();
+                dropZone.classList.add('drag-over');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault(); e.stopPropagation();
+                dropZone.classList.remove('drag-over');
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            if (dt.files.length > 0) handleFileSelection(dt.files[0]);
+        });
+
+        copyBtn.addEventListener('click', () => {
+            outputArea.select();
+            document.execCommand('copy');
+            const originalText = copyBtn.innerText;
+            copyBtn.innerText = "Copied!";
+            setTimeout(() => copyBtn.innerText = originalText, 2000);
+        });
+
+        extractBtn.addEventListener('click', async () => {
+            if (!selectedFile) {
+                showStatus("Please upload a file first.", "error");
+                return;
+            }
+
+            setLoading(true);
+            addLog(`Starting extraction for ${selectedFile.name}...`);
+
+            try {
+                let questions = [];
+                const fileNameLower = selectedFile.name.toLowerCase();
+                const isPdf = selectedFile.type === "application/pdf" || fileNameLower.endsWith('.pdf');
+                
+                if (isPdf) {
+                    addLog("Processing as PDF...");
+                    questions = await parsePdf(selectedFile);
+                } else {
+                    addLog("Processing as HTML...");
+                    questions = await parseHtml(selectedFile);
+                }
+
+                if (questions.length === 0) {
+                    throw new Error("No questions found. Ensure the file has 1. Question... followed by A) B) C) D) options.");
+                }
+
+                addLog(`Extracted ${questions.length} questions. Formatting text...`);
+                const formattedText = formatQuestions(questions);
+                outputArea.value = formattedText;
+                resultsContainer.classList.remove('hidden');
+                
+                showStatus(`Success! Extracted ${questions.length} questions.`, "success");
+                addLog("Extraction complete.");
+            } catch (err) {
+                console.error(err);
+                showStatus(err.message, "error");
+                addLog(`Error: ${err.message}`);
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        function setLoading(isLoading) {
+            extractBtn.disabled = isLoading;
+            loader.classList.toggle('hidden', !isLoading);
+            btnText.innerText = isLoading ? "Processing..." : "Extract Questions";
+        }
+
+        async function parsePdf(file) {
+            if (!window.pdfjsLib) throw new Error("PDF processing library not loaded.");
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            let fullText = "";
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map(item => item.str).join(" ");
+                fullText += pageText + "\n";
+            }
+            return extractQuestionsFromText(fullText);
+        }
+
+        async function parseHtml(file) {
+            const text = await file.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(text, 'text/html');
+            
+            const questionNodes = doc.querySelectorAll('.que');
+            if (questionNodes.length > 0) {
+                addLog("Moodle Quiz Review detected.");
+                const results = [];
+                questionNodes.forEach((qNode, idx) => {
+                    const qTextNode = qNode.querySelector('.qtext');
+                    if (!qTextNode) return;
+
+                    const qText = qTextNode.innerText.trim();
+                    const options = [];
+                    const answerNodes = qNode.querySelectorAll('.answer div[class^="r"]');
+                    
+                    let correctIndex = -1;
+                    answerNodes.forEach((ans, aIdx) => {
+                        const label = String.fromCharCode(65 + aIdx);
+                        let optText = ans.innerText.trim();
+                        optText = optText.replace(/^[a-dA-D][\.\)]\s*/, '');
+                        options.push({ label, text: optText });
+                        
+                        if (ans.classList.contains('correct') || 
+                            ans.querySelector('.text-success') || 
+                            ans.querySelector('i.fa-check') ||
+                            ans.innerHTML.toLowerCase().includes('correct')) {
+                            correctIndex = aIdx;
+                        }
+                    });
+
+                    if (correctIndex === -1) {
+                        const rightAnsText = qNode.querySelector('.rightanswer')?.innerText || "";
+                        options.forEach((opt, oIdx) => {
+                            if (rightAnsText && rightAnsText.toLowerCase().includes(opt.text.toLowerCase())) {
+                                correctIndex = oIdx;
+                            }
+                        });
+                    }
+
+                    results.push({
+                        id: results.length + 1,
+                        question: qText,
+                        options: options.slice(0, 4),
+                        correctIndex: correctIndex === -1 ? 0 : correctIndex
+                    });
+                });
+                return results;
+            }
+            return extractQuestionsFromText(doc.body.innerText);
+        }
+
+        function extractQuestionsFromText(text) {
+            const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            const questions = [];
+            let currentQ = null;
+            let currentOptions = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const qMatch = line.match(/^(\d+)[\.\)]\s+(.*)/);
+                
+                if (qMatch) {
+                    if (currentQ && currentOptions.length >= 2) {
+                        questions.push({ ...currentQ, options: currentOptions.slice(0, 4) });
+                    }
+                    currentQ = { id: questions.length + 1, question: qMatch[2], correctIndex: 0 };
+                    currentOptions = [];
+                    continue;
+                }
+
+                const oMatch = line.match(/^([A-D])[\.\)]\s+(.*)/i);
+                if (oMatch && currentQ) {
+                    const label = oMatch[1].toUpperCase();
+                    currentOptions.push({ label, text: oMatch[2] });
+                    continue;
+                }
+                
+                if (currentQ && currentOptions.length === 0) {
+                    currentQ.question += " " + line;
+                }
+            }
+            
+            if (currentQ && currentOptions.length >= 2) {
+                questions.push({ ...currentQ, options: currentOptions.slice(0, 4) });
+            }
+            return questions;
+        }
+
+        function formatQuestions(questions) {
+            return questions.map((q, idx) => {
+                let output = `${idx + 1}. ${q.question}\n`;
+                q.options.forEach((opt, oIdx) => {
+                    const isCorrect = oIdx === q.correctIndex;
+                    if (isCorrect) {
+                        output += `**${opt.label}) ${opt.text}**\n`;
+                    } else {
+                        output += `${opt.label}) ${opt.text}\n`;
+                    }
+                });
+                return output;
+            }).join('\n');
+        }
+    </script>
+</body>
+</html>
