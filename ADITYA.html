@@ -269,7 +269,7 @@
 
     .stat-item { font-weight: 700; font-size: 0.85rem; }
 
-    /* Floating Timer - Touch Optimized */
+    /* Floating Timer */
     #floatingTimer {
       position: fixed;
       bottom: 20px;
@@ -492,7 +492,7 @@
               <input type="number" id="numQuestions" class="input-field" value="200" min="10" />
             </div>
             <div class="input-group">
-              <label class="input-label">Options</label>
+              <label class="input-label">Shuffle Settings (apply on Shuffle button)</label>
               <label class="checkbox-group">
                 <input type="checkbox" id="jumbleQuestions" checked> Jumble Questions
               </label>
@@ -671,7 +671,7 @@
     }
     function hideLoading() { document.getElementById('loadingStatus').style.display = 'none'; }
 
-    async function processRawText(text, shuffleQs = true, shuffleOpts = true) {
+    async function processRawText(text, shuffleQs = false, shuffleOpts = false) {
       const cleaned = text.replace(/^Section:.*$/gm, ''); 
       const blocks = cleaned.split(/\n(?=\d+\. )/g);
       let parsed = [];
@@ -690,6 +690,7 @@
       }
 
       if (parsed.length > 0) {
+        // Only shuffle if explicitly requested (usually via Shuffle Button)
         if (shuffleQs) shuffleArray(parsed);
         if (shuffleOpts) {
           parsed.forEach(q => {
@@ -704,7 +705,7 @@
         document.getElementById('statsBar').style.display = 'flex';
         document.getElementById('clearSessionBtn').style.display = 'block';
         document.getElementById('upload-section').classList.add('collapsed');
-      } else alert("Format error.");
+      } else alert("Format error. Please check your questions.");
     }
 
     function renderQuiz() {
@@ -757,13 +758,9 @@
           if (parseInt(input.value) === selIdx) input.checked = true;
         });
 
-        // Clear existing feedback icons
         card.querySelectorAll('.feedback-icon').forEach(icon => icon.textContent = '');
-
-        const selLabel = document.getElementById(`label-${qIdx}-${selIdx}`);
-        const corrLabel = document.getElementById(`label-${qIdx}-${qObj.answer}`);
-        const selIcon = document.getElementById(`feedback-icon-${qIdx}-${selIdx}`);
-        const corrIcon = document.getElementById(`feedback-icon-${qIdx}-${qObj.answer}`);
+        const selLabel = document.getElementById(`label-${qIdx}-${selIdx}`), corrLabel = document.getElementById(`label-${qIdx}-${qObj.answer}`);
+        const selIcon = document.getElementById(`feedback-icon-${qIdx}-${selIdx}`), corrIcon = document.getElementById(`feedback-icon-${qIdx}-${qObj.answer}`);
 
         if (selIdx === qObj.answer) {
           score++;
@@ -775,7 +772,6 @@
           if (corrLabel) corrLabel.classList.add('correct-choice');
           if (corrIcon) corrIcon.textContent = '✔';
         } else {
-          // Revealed but not selected
           if (corrLabel) corrLabel.classList.add('correct-choice');
           if (corrIcon) corrIcon.textContent = '✔';
         }
@@ -785,13 +781,8 @@
 
     document.getElementById('revealAllBtn').onclick = () => {
       if(confirm("Reveal all correct answers? This will mark all questions as answered.")) {
-        questions.forEach((q, idx) => {
-          if (!userAnswers.hasOwnProperty(idx)) {
-            userAnswers[idx] = -1; // Mark as revealed but no selection
-          }
-        });
-        saveToBrowser();
-        applyStoredAnswers();
+        questions.forEach((q, idx) => { if (!userAnswers.hasOwnProperty(idx)) userAnswers[idx] = -1; });
+        saveToBrowser(); applyStoredAnswers();
       }
     };
 
@@ -799,12 +790,13 @@
     document.getElementById('tab-ai').onclick = () => switchTab('ai');
     document.getElementById('tab-upload').onclick = () => switchTab('upload');
     document.getElementById('tab-paste').onclick = () => switchTab('paste');
-    document.getElementById('clearSessionBtn').onclick = () => { if(confirm("Clear current quiz?")) { localStorage.clear(); location.reload(); } };
+    document.getElementById('clearSessionBtn').onclick = () => { if(confirm("Clear current quiz and all progress?")) { localStorage.clear(); location.reload(); } };
     
     document.getElementById('jumbleNowBtn').onclick = () => {
       if(confirm("Shuffle quiz and restart progress?")) {
         const shuffleQs = document.getElementById('jumbleQuestions').checked;
         const shuffleOpts = document.getElementById('jumbleOptions').checked;
+        // Construct the raw text from current questions to re-parse with shuffling
         const raw = questions.map((q, idx) => {
           const opts = [...q.options];
           opts[q.answer] = `**${opts[q.answer]}**`;
@@ -824,8 +816,9 @@
         else if (file.name.endsWith('.docx')) text = (await mammoth.extractRawText({arrayBuffer: await file.arrayBuffer()})).value;
         showLoading(`Authoring MCQs...`, 40);
         const aiOutput = await callGemini(apiKey, text, count);
-        showLoading("Finalizing...", 90);
-        await processRawText(aiOutput, document.getElementById('jumbleQuestions').checked, document.getElementById('jumbleOptions').checked);
+        showLoading("Rendering...", 90);
+        // Initial generation is ALWAYS same order (false, false)
+        await processRawText(aiOutput, false, false);
         showLoading("Ready!", 100); setTimeout(hideLoading, 800);
       } catch (err) { alert(err.message); hideLoading(); }
     };
@@ -836,7 +829,8 @@
       const reader = new FileReader();
       reader.onload = (event) => {
         mammoth.extractRawText({arrayBuffer: event.target.result}).then(async (result) => { 
-          await processRawText(result.value, document.getElementById('jumbleQuestions').checked, document.getElementById('jumbleOptions').checked); hideLoading(); 
+          // Initial upload is ALWAYS same order
+          await processRawText(result.value, false, false); hideLoading(); 
         });
       };
       reader.readAsArrayBuffer(file);
@@ -846,7 +840,8 @@
       const text = document.getElementById('pasteInput').value;
       if (!text.trim()) return;
       showLoading("Processing...", 50);
-      await processRawText(text, document.getElementById('jumbleQuestions').checked, document.getElementById('jumbleOptions').checked);
+      // Initial paste is ALWAYS same order
+      await processRawText(text, false, false);
       hideLoading();
     };
   </script>
